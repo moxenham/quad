@@ -12,8 +12,8 @@ public:
         double accelerationxlp, accelerationylp , accelerationzlp ;
         double height ;
         double positionx , positiony ;
-        const double DEG2RAD = 3.14159265354 / 180.0;
-        const double RAD2DEG = 180.0 / 3.14159265354;
+        double DEG2RAD;
+        double RAD2DEG;
         double pitch , roll ,pitch2 ;
         double apitch , aroll , apitch2 ;
         double tval ;
@@ -29,6 +29,11 @@ public:
         double magcx , magcy , magcz , magnormal;
         double ogx , ogy , ogz ;
 
+        double fmagcx = 0.0d, fmagcy = 0.0d, fmagcz = 0.0d;
+        double magpitch = 0.0d, magroll = 0.0d, magyaw = 0.0d;
+        double mgravityx = 0, mgravityy = 0, mgravityz = 0;
+        double mgravityx2 = 0, mgravityy2 = 0, mgravityz2 = 1.0d;
+        double tmagcorrectionx = 0.0d, tmagcorrectiony = 0.0d, tmagcorrectionz = 0.0d;
 
 		testahrs(void);
         testahrs(double ax,double ay,double az);

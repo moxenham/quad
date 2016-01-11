@@ -27,6 +27,14 @@ testahrs::testahrs(void)
         magcx = 0.0; magcy = 0.0; magcz = 0.0;
         ogx = 0.0; ogy = 0.0; ogz = 0.0;
 
+        DEG2RAD = 3.14159265354 / 180.0;
+        RAD2DEG = 180.0 / 3.14159265354;
+
+        fmagcx = 0.0; fmagcy = 0.0; fmagcz = 0.0;
+        magpitch = 0.0; magroll = 0.0; magyaw = 0.0;
+        mgravityx = 0; mgravityy = 0; mgravityz = 0;
+        mgravityx2 = 0; mgravityy2 = 0; mgravityz2 = 1.0;
+        tmagcorrectionx = 0.0; tmagcorrectiony = 0.0, tmagcorrectionz = 0.0;
 }
 
 
@@ -115,11 +123,21 @@ testahrs::~testahrs(void)
             _2drotate(tgrx, tgry, gz*dt, tgrx2, tgry2);
             // tgrx2,tgry2,tgrz2 are the new values
             gravityx += (tgrx2 - gravityx) * 1.0;// 0.99 is how much we trust the gyro rotated value
-            gravityy += (tgry2 - gravityy) * 1.0;// 0.99 is how much we trust the gyro rotated value
-            gravityz += (tgrz2 - gravityz) * 1.0;// 0.99 is how much we trust the gyro rotated value
+            gravityy += (tgry2 - gravityy) * 1.0;
+            gravityz += (tgrz2 - gravityz) * 1.0;
+
+            // rotate the magnetometer gravity estimation by the gyro's
+            _2drotate(mgravityy2, mgravityz2, gx * dt, tgry, tgrz);
+            _2drotate(mgravityx2, tgrz, gy * dt, tgrx, tgrz2);
+            _2drotate(tgrx, tgry, gz * dt, tgrx2, tgry2);
+            mgravityx2 = tgrx2; mgravityy2 = tgry2; mgravityz2 = tgrz2;
+            
+            //gravityx += (mgravityx2 - gravityx) * 0.02;// 0.02 is how much we trust the magnetometer
+            //gravityy += (mgravityy2 - gravityy) * 0.02;
+            //gravityz += (mgravityz2 - gravityz) * 0.02;
 
             double lnm = sqrt(ax * ax + ay * ay + az * az);
-            // also add the accelerometer readings, but we trust that less because its very noisy
+            // also add the accelerometer readings (normalised), but we trust that less because its very noisy
             gravityx += ((ax / lnm) - gravityx) * 0.02;
             gravityy += ((ay / lnm) - gravityy) * 0.02;
             gravityz += ((az / lnm) - gravityz) * 0.02;
@@ -173,8 +191,8 @@ testahrs::~testahrs(void)
                 ma += 360;
             //yaw += (magangle - yaw) * 0.05d;
             yaw += (ma) * 0.005d;
-            if (yaw >= 180.0) yaw -= 360.0;
-            if (yaw <= -180.0) yaw += 360.0;*/
+            if (yaw >= 180.0d) yaw -= 360.0d;
+            if (yaw <= -180.0d) yaw += 360.0d;*/
 
             // rotate the accelerometer reading by pitch/roll and yaw to find a real world acceleration
             double tax = ax, tay = ay, taz = az;
@@ -192,19 +210,19 @@ testahrs::~testahrs(void)
             //CalculateAcceleration(ax, ay, az, out tgrx2, out tgry2, out tgrz2);
 
             accelerationx = tgrx2;
-            //if ((accelerationx < 0.03) && (accelerationx > -0.03)) accelerationx = 0.0;
+            //if ((accelerationx < 0.03) && (accelerationx > -0.03)) accelerationx = 0.0d;
             accelerationy = tgry2;
-            //if ((accelerationy < 0.03) && (accelerationy > -0.03)) accelerationy = 0.0;
+            //if ((accelerationy < 0.03) && (accelerationy > -0.03)) accelerationy = 0.0d;
             accelerationz = tgrz2;
-            //if ((accelerationz < 0.03) && (accelerationz > -0.03)) accelerationz = 0.0;
+            //if ((accelerationz < 0.03) && (accelerationz > -0.03)) accelerationz = 0.0d;
 
             //accelerationxlp = accelerationxlp * 0.95 + accelerationx * 0.05d;// low pass filter on accelerometers to create a high pass filter on velocity
             //accelerationylp = accelerationylp * 0.95 + accelerationy * 0.05d;
             //accelerationzlp = accelerationzlp * 0.999 + accelerationz * 0.001d;
 
-            velocityx += (accelerationx - accelerationxlp) * dt;
-            velocityy += (accelerationy - accelerationylp) * dt;
-            velocityz += (accelerationz - accelerationzlp) * dt;
+            velocityx += (accelerationx - accelerationxlp) * dt*9.80665;// remember to multiply by the scale factor (gravity)
+            velocityy += (accelerationy - accelerationylp) * dt * 9.80665;
+            velocityz += (accelerationz - accelerationzlp) * dt * 9.80665;
             //velocityx *= 0.99d;// slowely cycle velocities down to account for inaccuracies
             //velocityy *= 0.99d;
             //velocityz *= 0.99d;
@@ -220,8 +238,8 @@ testahrs::~testahrs(void)
 
         void testahrs::UpdateMagnetometer(double mgx,double mgy,double mgz)
         {
-            double[] magnetometer_data = new double[3];
-            // first check min/max values (always running calibration, will probably need to be reset to defaults if the quad is moved a significant distance)
+            double* magnetometer_data = new double[3];
+			            // first check min/max values (always running calibration, will probably need to be reset to defaults if the quad is moved a significant distance)
             magnetometer_data[0] = mgx;
             magnetometer_data[1] = mgy;
             magnetometer_data[2] = mgz;
@@ -261,6 +279,8 @@ testahrs::~testahrs(void)
             // flip magcx and magcy, seems the magnetometer axis are different than the accelerometer
             tmx = magcy; magcy = magcx; magcx = tmx;
 
+            double omagcx = magcx, omagcy = magcy, omagcz = magcz;
+
             _2drotate(magcy, magcz, -pitch, tmy, tmz); magcy = tmy; magcz = tmz; // not sure why these are - probably something to do with the direction of the magnetometer axis'
             _2drotate(magcx, magcz, -roll, tmx, tmz); magcx = tmx; magcz = tmz;
             _2drotate(magcy, magcz, -pitch2, tmy, tmz); magcy = tmy; magcz = tmz;
@@ -273,5 +293,68 @@ testahrs::~testahrs(void)
             _2drotate(magcx, magcy, -magangle, tmx, tmy);
             magcx = tmx;
             magcy = tmy;
+
+
+            /// experimental magnetometer correction for pitch and roll
+            // take an average of the mag world reading (with respect to gravity being straight down)
+            fmagcx += (magcx-fmagcx) * 0.01;
+            fmagcy += (magcy-fmagcy) * 0.01;
+            fmagcz += (magcz-fmagcz) * 0.01;
+
+            // calculate pitch and roll of current mag reading
+            magpitch = CalcAngle(omagcz, omagcy);
+            // remove pitch then calc roll
+            double tx,ty, tz;
+            _2drotate(omagcy, omagcz, magpitch, ty, tz);
+            magroll = CalcAngle(tz, omagcx);
+
+            mgravityx = gravityx; mgravityy = gravityy; mgravityz = gravityz;
+            // now calculate gravity with respect to the magnetometer axis
+            _2drotate(mgravityy, mgravityz, -magpitch, ty, tz); mgravityy = ty; mgravityz = tz;
+            _2drotate(mgravityx, mgravityz, -magroll, tx, tz); mgravityx = tx; mgravityz = tz;
+
+            // calculate the yaw of the gravity reading and remove it
+            magyaw = CalcAngle(mgravityx, mgravityy);
+            _2drotate(mgravityx, mgravityy, -magyaw, tx, ty); mgravityx = tx; mgravityy = ty;
+
+            // this vector should 
+
+            // calculate pitch and roll of world mag reading
+            double ofmagcx = fmagcx, ofmagcy = fmagcy, ofmagcz = fmagcz;
+            double magpitch2 = CalcAngle(ofmagcz, ofmagcy);
+            // remove pitch then calc roll
+            _2drotate(ofmagcy, ofmagcz, magpitch2, ty, tz);
+            double magroll2 = CalcAngle(tz, ofmagcx);
+
+            mgravityx2 = 0; mgravityy2 = 0; mgravityz2 = 1.0;
+            // now calculate gravity with respect to the magnetometer axis
+            _2drotate(mgravityy2, mgravityz2, magpitch2, ty, tz); mgravityy2 = ty; mgravityz2 = tz;
+            _2drotate(mgravityx2, mgravityz2, magroll2, tx, tz); mgravityx2 = tx; mgravityz2 = tz;
+
+            // calculate the yaw of the gravity reading and remove it (shouldnt be one, but just to check)
+            double magyaw2 = CalcAngle(mgravityx2, mgravityy2);
+            _2drotate(mgravityx2, mgravityy2, magyaw2, tx, ty); mgravityx2 = tx; mgravityy2 = ty;
+
+            // adjust mgravity towards mgravity2
+            tmagcorrectionx= (mgravityx2 - mgravityx) * 0.1;// just so I can graph the changes
+            tmagcorrectiony = (mgravityy2 - mgravityy) * 0.1;
+            tmagcorrectionz = (mgravityz2 - mgravityz) * 0.1;
+
+            mgravityx += (mgravityx2 - mgravityx) * 0.1;// magnetometer can be noisey so dont trust it so much
+            mgravityy += (mgravityy2 - mgravityy) * 0.1;
+            mgravityz += (mgravityz2 - mgravityz) * 0.1;
+
+            // rotate mgravity back to the normal reading
+            _2drotate(mgravityx, mgravityy, magyaw, tx, ty); mgravityx = tx; mgravityy = ty;
+            _2drotate(mgravityx, mgravityz, magroll, tx, tz); mgravityx = tx; mgravityz = tz;
+            _2drotate(mgravityy, mgravityz, magpitch, ty, tz); mgravityy = ty; mgravityz = tz;
+
+            _2drotate(mgravityx2, mgravityy2, magyaw, tx, ty); mgravityx2 = tx; mgravityy2 = ty;
+            _2drotate(mgravityx2, mgravityz2, magroll, tx, tz); mgravityx2 = tx; mgravityz2 = tz;
+            _2drotate(mgravityy2, mgravityz2, magpitch, ty, tz); mgravityy2 = ty; mgravityz2 = tz;
+
+            // this should be the new gravity reading
+            //gravityx = mgravityx; gravityy = mgravityy; gravityz = mgravityz;
+			delete(magnetometer_data);
         }
 

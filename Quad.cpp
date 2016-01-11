@@ -30,7 +30,7 @@ const float DEG_TO_RAD = 3.14159265354/180.0f;
 const float DEG2RAD = DEG_TO_RAD;
 struct timeval tv;
 bool quiting = false;
-const float ESCCentre = 1460; // I was assuming the PWM was compatible between the simonk ESC's and the PI PWM chip 1460
+const float ESCCentre = 1460;
 
 bool armed = false;
 int rollchannel = 0;
@@ -54,8 +54,8 @@ float afb2av = 0.0f,alr2av = 0.0f,yawcentre = 0.0f;
 float prevafb2 = 0.0f,prevalr2 = 0.0f;
 float prev2afb2 = 0.0f,prev2alr2 = 0.0f;
 
-float kp = 0.70,ki = 0.0001,kd = 0.00;// const float kp = 1.0,ki = 0.009,kd = -0.05;, kd=-0.90
-float kp2 = 0.090,ki2 = 0.0300,kd2 = 0.500,kd22 = 0.00;// .250 and .003 float kp2 = 0.250,ki2 = 0.000,kd2 = 0.003;kd2=0.0045, -0.008
+float kp = 1.0,ki = 0.0001,kd = 0.00;// const float kp = 1.0,ki = 0.009,kd = -0.05;, kd=-0.90
+float kp2 = 0.090,ki2 = 0.0300,kd2 = 0.300,kd22 = 0.00;// .250 and .003 float kp2 = 0.250,ki2 = 0.000,kd2 = 0.003;kd2=0.0045, -0.008
 float yawkp = -0.6,yawkd = 0.30,yawki = 0.000;//float yawkp = -2.0,yawkd = 1.0,yawki = 0.001;
 float hoverscale = 43.0f/50.0f;
 
@@ -70,7 +70,7 @@ float magangle = 0.0f;
 float magcorrection = 0.0f;
 
 // virtual horizon values
-float vhzxz = -3.00,vhzyz = 0.0;// xz=roll, yz=pitch
+float vhzxz = -3.00,vhzyz = 0.0;// xz=roll, yz=pitch (might also need a xy, yaw equivelent)
 
 MS5611 baro;
 unsigned long long lastbarometerupdate = 0;
@@ -686,7 +686,7 @@ int main()
 		channels[7] = channelscopy[7];
 		pthread_mutex_unlock(&radiomutex);
 
-	} // wait for initial transmitter values (make sure dmp doesnt overflow)
+	} // wait for initial transmitter values
 	for (int r=0;r<50;r++)
 	{
 		usleep(5000);
@@ -700,7 +700,7 @@ int main()
 		channels[6] = channelscopy[6];
 		channels[7] = channelscopy[7];
 		pthread_mutex_unlock(&radiomutex);
-	}	
+	}
 	SetMid();
 	printf("%4.0f,%4.0f, %4.0f, %4.0f\n",channels[0],channels[1],channels[2],channels[3]);
 	
@@ -746,11 +746,11 @@ int main()
 	azav = azav/1000.0f;
 	// calculate an average accelerometer stationary length
 	float accelerometeravlength = sqrt(axav*axav+ayav*ayav+azav*azav);
-	
+
 	gyxav = gyxav/1000.0f;
 	gyyav = gyyav/1000.0f;
 	gyzav = gyzav/1000.0f;
-	
+
 	bool ledstate = false;
 	std::ofstream logfile;
     logfile.open("log.txt", std::ios_base::app);
@@ -763,6 +763,7 @@ int main()
 	int targetfrequency = 1000;// must be a multiplier of the below targetcount divisor
 	int targetcount = targetfrequency/50; // 50 is the frequency of pid updates, must be an integer divisor of the above targetfrequency
 	double avlen = 0.0d;
+	double vax = 0.0d,vay = 0.0d,vaz = 0.0d;
     while(!quiting) {
 		avtax = 0.f;
 		avtay = 0.f;
@@ -905,7 +906,10 @@ int main()
 		// rotate gravity by the virtual horizon values
 		_2drotate(ax,az,tvx,tvz,vhzxz);
 		_2drotate(ay,tvz,tvy,tvz2,vhzyz);
-		double vax = tvx,vay = tvy,vaz = tvz2;
+		//double vax = tvx,vay = tvy,vaz = tvz2;
+		vax +=(tvx-vax)*0.5;// simple smoothing filter
+		vay +=(tvy-vay)*0.5;
+		vaz +=(tvz2-vaz)*0.5;
 		
 		if (ctime-lastbarometerupdate>=21000)
 		{
@@ -989,7 +993,7 @@ int main()
 			double tax2 = (tax/avlen)-tax;
 			double tay2 = (tay/avlen)-tay;
 			double taz2 = (taz/avlen)-taz;
-			printf("%i %i %4.3f ,%4.3f, %4.3f avlen: %2.4f %4.3f ,%4.3f, %4.3f \n",imureadcount,pidupdatecount,tax,tay,taz,avlen,tax2,tay2,taz2);
+			printf("%i %i %4.3f ,%4.3f, %4.3f avlen: %2.4f %4.3f ,%4.3f, %4.3f \n",imureadcount,pidupdatecount,vax,vay,vaz,avlen,tax2,tay2,taz2);
 			imureadcount = 0;
 			pidupdatecount = 0;
 			avlen = 0.0d;
